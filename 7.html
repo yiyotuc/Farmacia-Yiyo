@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOEM | FARMACIA YIYO - Ledger (Datos Locales)</title>
+    <!-- Carga de Google Fonts para Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de la librería XLSX para manejar exportación a Excel (CSV) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Configuración de fuentes y tema de Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#10b981', // emerald-500
+                        'secondary': '#34d399', // emerald-400
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Definir variables CSS */
+        :root {
+            --primary-color: #10b981; /* emerald-500 */
+        }
+
+        /* Estilo para hacer las celdas editables visualmente */
+        .editable {
+            outline: none;
+            cursor: pointer;
+            min-width: 5rem;
+            text-align: right; /* Alineación de números */
+        }
+        .editable:hover {
+            background-color: #f0fdf4; /* emerald-50 */
+        }
+        .editable:focus {
+            background-color: #d1fae5; /* emerald-100 */
+            border-bottom: 2px solid var(--primary-color);
+        }
+        
+        /* Estilos específicos para impresión */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background-color: white !important;
+                padding: 0;
+            }
+            .print-area {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+            }
+            /* Asegurar que la tabla ocupe el ancho y se vea bien */
+            .print-area table {
+                width: 100%;
+                font-size: 10pt;
+                border-collapse: collapse;
+            }
+            .print-area th, .print-area td {
+                border: 1px solid #ccc;
+                padding: 6px;
+                text-align: left;
+            }
+            .print-area td:nth-child(n+3) { /* Alinea montos a la derecha */
+                text-align: right;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans p-4 md:p-8">
+
+    <!-- Contenedor Principal de la App -->
+    <div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-10">
+
+        <!-- Títulos y Estado de la BD -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-blue-500 mb-1">SOEM</h1>
+            <h2 class="text-2xl font-semibold text-primary">FARMACIA YIYO - Ledger (Datos Locales)</h2>
+            <p id="loading-status" class="text-sm text-yellow-600 mt-2 font-medium">Cargando datos...</p>
+        </header>
+
+        <!-- Contenido principal (Búsqueda y Resultado) -->
+        <div id="main-view" class="print-area">
+            
+            <!-- Barra de Búsqueda (Oculta al imprimir) -->
+            <div id="search-bar" class="no-print border-b border-gray-200 pb-6 mb-6">
+                <h3 class="text-xl font-semibold text-gray-700 mb-4">Búsqueda de Socio (DNI)</h3>
+                <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                    <input type="text" id="dni-input" placeholder="Ingrese DNI (ej: 11962782)" class="flex-grow w-full sm:w-auto p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150" inputmode="numeric">
+                    <button id="search-button" onclick="handleSearch()" class="w-full sm:w-auto px-6 py-3 bg-primary text-white font-bold rounded-lg shadow-md hover:bg-secondary transition duration-300 transform hover:scale-105">
+                        Buscar DNI
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resultado de Búsqueda (Registro editable) -->
+            <div id="search-results-container" class="hidden">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Registro Encontrado:</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white border border-gray-200 rounded-xl shadow-inner">
+                        <thead class="bg-gray-100 border-b border-gray-200">
+                            <tr>
+                                <th class="p-4 text-left text-sm font-semibold text-gray-600">Apellido y Nombre</th>
+                                <th class="p-4 text-left text-sm font-semibold text-gray-600">DNI</th>
+                                <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 1</th>
+                                <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 2</th>
+                                <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 3</th>
+                                <th class="p-4 text-right text-sm font-bold text-red-600">SALDO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-table-body">
+                            <!-- Los datos se insertarán aquí por JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Botón de Guardar (Visible solo con resultados de búsqueda) -->
+                <div class="flex justify-end pt-6 border-t border-gray-200 mt-6 no-print">
+                    <button id="save-button" onclick="handleSave()" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 transform hover:scale-105">
+                        Guardar Modificación Local
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Vista de Gastos del Mes (Inicialmente oculta) -->
+        <div id="monthly-expenses-view" class="hidden">
+            <h3 class="text-2xl font-bold text-gray-800 mb-6">Listado de Gastos del Mes</h3>
+            <div class="overflow-x-auto mb-6 print-area">
+                <table class="min-w-full bg-white border border-gray-200 rounded-xl shadow-inner">
+                    <thead class="bg-gray-100 border-b border-gray-200">
+                        <tr>
+                            <th class="p-4 text-left text-sm font-semibold text-gray-600">Apellido y Nombre</th>
+                            <th class="p-4 text-left text-sm font-semibold text-gray-600">DNI</th>
+                            <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 1</th>
+                            <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 2</th>
+                            <th class="p-4 text-right text-sm font-semibold text-gray-600">Gasto 3</th>
+                            <th class="p-4 text-right text-sm font-bold text-red-600">SALDO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monthly-expenses-body">
+                        <!-- Los gastos se insertarán aquí por JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Botones de Acción de Gastos del Mes (Ocultos al imprimir) -->
+            <div id="monthly-expense-actions" class="flex flex-wrap justify-end gap-4 border-t border-gray-200 pt-6 no-print">
+                <button onclick="renderSearch()" class="px-6 py-3 bg-gray-500 text-white font-bold rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                    Atrás
+                </button>
+                <button onclick="handlePrint()" class="px-6 py-3 bg-green-500 text-white font-bold rounded-lg shadow-md hover:bg-green-600 transition duration-300 transform hover:scale-105">
+                    Imprimir Listado
+                </button>
+                <button onclick="handleCloseMonthConfirmation()" class="px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 transition duration-300 transform hover:scale-105">
+                    Cerrar Mes (Limpiar Gastos Locales)
+                </button>
+            </div>
+        </div>
+
+        <!-- Botones de Pie de Página (Visibles solo en la vista principal) -->
+        <div id="footer-actions" class="flex flex-wrap justify-center gap-4 mt-8 pt-6 border-t border-gray-200 no-print">
+            <button onclick="renderMonthlyExpenses()" class="px-6 py-3 bg-primary text-white font-bold rounded-lg shadow-lg hover:bg-secondary transition duration-300 transform hover:scale-105">
+                Gastos Mes
+            </button>
+            <button onclick="handleCloseMonthConfirmation()" class="px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg hover:bg-red-700 transition duration-300 transform hover:scale-105">
+                Cerrar Mes (Limpiar Gastos Locales)
+            </button>
+            <button onclick="handleExport()" class="px-6 py-3 bg-yellow-500 text-white font-bold rounded-lg shadow-lg hover:bg-yellow-600 transition duration-300 transform hover:scale-105">
+                Exportar a Excel (CSV)
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Modal Personalizado para Confirmaciones y Mensajes (Reemplazo de alert/confirm) -->
+    <div id="custom-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center z-50 transition-opacity duration-300">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full transform transition-all duration-300 scale-95 opacity-0" id="modal-content-container">
+            <h4 id="modal-title" class="text-xl font-bold mb-4 text-gray-800">Mensaje</h4>
+            <p id="modal-message" class="mb-6 text-gray-600"></p>
+            <div id="modal-actions" class="flex justify-end gap-3">
+                <button id="modal-cancel" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition duration-150">Cancelar</button>
+                <button id="modal-confirm" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition duration-150">Aceptar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://raw.githubusercontent.com/yiyotuc/Farmacia-Yiyo/main/db.json';
+        const DB_NAME = 'FarmaciaYiyoDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'ledger';
+        
+        let farmaciaData = []; // Base de datos manejada en memoria (sincronizada con IndexedDB)
+        let currentRecord = null; // Registro actualmente en edición
+        let isDataLoaded = false;
+        
+        // Mapeo de columnas originales a nombres internos estandarizados
+        const FIELD_MAP = {
+            'DNI': 'dni',
+            'APELLIDO Y NOMBRE': 'apellidoNombre',
+            ' GASTOS 1 ': 'gasto1',
+            ' GASTOS 2 ': 'gasto2',
+            ' GASTOS 3 ': 'gasto3',
+            'LEGAJO': 'legajo',
+            'MES': 'mes',
+        };
+        const GASTO_FIELDS = ['gasto1', 'gasto2', 'gasto3'];
+
+        // --- Funciones de IndexedDB ---
+
+        async function openDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'dni' });
+                    }
+                };
+                req.onsuccess = (e) => resolve(e.target.result);
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function getAllFromDB() {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function putToDB(item) {
+            const db = await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.put(item);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        // --- Funciones de Carga de Datos ---
+
+        /**
+         * Intenta cargar los datos desde IndexedDB, si no existen, los carga del JSON remoto.
+         */
+        async function loadData() {
+            document.getElementById('loading-status').textContent = 'Cargando datos locales...';
+            
+            // 1. Intentar cargar desde IndexedDB
+            try {
+                farmaciaData = await getAllFromDB();
+                if (farmaciaData.length > 0) {
+                    isDataLoaded = true;
+                    updateLoadingStatus(`Datos cargados de IndexedDB. Total registros: ${farmaciaData.length}`);
+                    console.log("Datos cargados de IndexedDB.");
+                    return;
+                }
+            } catch (e) {
+                console.error("Error al cargar de IndexedDB. Forzando carga desde API.", e);
+            }
+
+            // 2. Cargar desde la API remota
+            document.getElementById('loading-status').textContent = 'Cargando datos iniciales desde la API remota...';
+            try {
+                const response = await fetch(API_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`Error al cargar la API: ${response.statusText}`);
+                }
+                
+                const dataToProcess = await response.json();
+                
+                // Normalizar y calcular saldos iniciales
+                farmaciaData = dataToProcess.map(normalizeItem);
+                
+                // Guardar la primera carga en IndexedDB
+                for (const item of farmaciaData) {
+                    await putToDB(item);
+                }
+
+                isDataLoaded = true;
+                updateLoadingStatus(`Datos iniciales cargados desde la API. Total registros: ${farmaciaData.length}`);
+
+                // Si estamos en la vista de reportes, actualizarla
+                if (!document.getElementById('monthly-expenses-view').classList.contains('hidden')) {
+                    renderMonthlyExpenses(true);
+                }
+
+            } catch (error) {
+                console.error("Error al cargar datos remotos:", error);
+                showModal('Error Grave', 'No se pudo cargar la base de datos remota. Error: ' + error.message);
+                updateLoadingStatus(`Fallo al cargar datos. Error: ${error.message}`);
+            }
+        }
+        window.loadData = loadData; // Hacer global para el evento DOMContentLoaded
+
+        /**
+         * Actualiza el estado de carga en la UI.
+         */
+        function updateLoadingStatus(message) {
+            const statusElement = document.getElementById('loading-status');
+            statusElement.textContent = message;
+            statusElement.classList.replace('text-yellow-600', 'text-green-600');
+        }
+
+        // --- Funciones de Procesamiento de Datos ---
+
+        /**
+         * Normaliza un registro de datos.
+         */
+        function normalizeItem(rawItem) {
+            const item = {};
+            for (const rawKey in rawItem) {
+                // Usamos .trim() para las claves que pueden tener espacios como " GASTOS 1 "
+                const internalKey = FIELD_MAP[rawKey.trim()]; 
+                if (internalKey) {
+                    const rawValue = rawItem[rawKey];
+                    // Convertir a número si es un campo monetario/gasto
+                    if (GASTO_FIELDS.includes(internalKey)) {
+                        item[internalKey] = parseNumber(rawValue);
+                    } else if (internalKey === 'dni') {
+                        // Asegurarse de que el DNI sea una cadena limpia y el identificador
+                        item.dni = String(rawValue).trim();
+                    } else {
+                        item[internalKey] = rawValue;
+                    }
+                }
+            }
+            
+            // Asegurar que los campos de gasto existan y sean numéricos
+            GASTO_FIELDS.forEach(field => {
+                item[field] = item[field] === undefined ? 0 : item[field];
+                // Convertir a número final si todavía no lo es (ej. si el JSON tenía string limpio "1000")
+                item[field] = parseNumber(item[field]);
+            });
+
+            // Añadir el saldo calculado
+            item.saldo = calculateSaldo(item);
+            return item;
+        }
+
+        /**
+         * Limpia y convierte una cadena (ej. "$50,000.00") a un número entero.
+         * Devuelve 0 si la cadena es vacía o no válida.
+         */
+        function parseNumber(str) {
+            if (typeof str === 'number') return Math.round(str);
+            if (!str) return 0;
+            
+            let cleanStr = String(str).trim();
+            // Eliminar símbolos de moneda, espacios y comas (para formato AR)
+            cleanStr = cleanStr.replace(/[$ ]/g, '').replace(/,/g, '').replace(/-/g, '');
+            
+            return Math.round(parseFloat(cleanStr) || 0);
+        }
+
+        /**
+         * Formatea un número a formato de moneda local (sin decimales).
+         */
+        function formatNumber(num) {
+            return (num || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        }
+
+        /**
+         * Calcula el saldo sumando los gastos 1, 2 y 3.
+         */
+        function calculateSaldo(item) {
+            return GASTO_FIELDS.reduce((sum, field) => sum + (item[field] || 0), 0);
+        }
+
+        // --- Funciones de Utilidad de UI (Modal) ---
+
+        /**
+         * Muestra el modal personalizado (reemplazo de alert y confirm).
+         */
+        function showModal(title, message, isConfirm = false, onConfirm = null) {
+            const modal = document.getElementById('custom-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalMessage = document.getElementById('modal-message');
+            const modalConfirm = document.getElementById('modal-confirm');
+            const modalCancel = document.getElementById('modal-cancel');
+            const modalContainer = document.getElementById('modal-content-container');
+
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+
+            if (isConfirm) {
+                modalCancel.classList.remove('hidden');
+                modalConfirm.textContent = 'Confirmar';
+                modalConfirm.onclick = () => {
+                    hideModal();
+                    if (onConfirm) onConfirm();
+                };
+            } else {
+                modalCancel.classList.add('hidden');
+                modalConfirm.textContent = 'Aceptar';
+                modalConfirm.onclick = hideModal;
+            }
+
+            modalCancel.onclick = hideModal;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex', 'opacity-100');
+            setTimeout(() => {
+                modalContainer.classList.remove('scale-95', 'opacity-0');
+                modalContainer.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+        window.showModal = showModal;
+        
+        function hideModal() {
+            const modalContainer = document.getElementById('modal-content-container');
+            modalContainer.classList.remove('scale-100', 'opacity-100');
+            modalContainer.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                document.getElementById('custom-modal').classList.add('hidden');
+            }, 300);
+        }
+
+        // --- Lógica de Búsqueda y Edición ---
+
+        /**
+         * Busca un registro por DNI en la base de datos en memoria.
+         */
+        function handleSearch() {
+            if (!isDataLoaded) {
+                showModal('Búsqueda Pendiente', 'Los datos aún se están cargando. Por favor, espere un momento.');
+                return;
+            }
+
+            const dniInput = document.getElementById('dni-input').value.trim();
+            if (!dniInput) {
+                showModal('Error de Búsqueda', 'Por favor, ingrese un número de DNI para buscar.');
+                return;
+            }
+            
+            const result = farmaciaData.find(item => item.dni === dniInput);
+
+            if (result) {
+                // Clonar el registro para la edición local antes de guardar
+                currentRecord = JSON.parse(JSON.stringify(result)); 
+                displayResults(currentRecord);
+            } else {
+                showModal('Resultado No Encontrado', `No se encontró ningún registro para el DNI: ${dniInput}.`);
+                document.getElementById('search-results-container').classList.add('hidden');
+                document.getElementById('results-table-body').innerHTML = '';
+                currentRecord = null;
+            }
+        }
+        window.handleSearch = handleSearch;
+
+        /**
+         * Muestra el registro encontrado en una tabla editable.
+         */
+        function displayResults(item) {
+            const tbody = document.getElementById('results-table-body');
+            tbody.innerHTML = '';
+            document.getElementById('search-results-container').classList.remove('hidden');
+
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100 hover:bg-gray-50 transition duration-150';
+            
+            let rowHTML = `
+                <td class="p-4 whitespace-nowrap text-sm text-gray-700 font-medium">${item.apellidoNombre}</td>
+                <td class="p-4 whitespace-nowrap text-sm text-gray-700">${item.dni}</td>
+            `;
+
+            // Campos de gasto editables
+            GASTO_FIELDS.forEach(field => {
+                rowHTML += `
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-700 text-right">
+                        <span contenteditable="true" class="editable border-b border-dashed border-primary px-1" data-field="${field}" data-id="${item.dni}">${formatNumber(item[field])}</span>
+                    </td>
+                `;
+            });
+            
+            // Campo de Saldo (no editable)
+            rowHTML += `
+                <td class="p-4 whitespace-nowrap text-base font-bold text-red-600 text-right" id="saldo-${item.dni}">${formatNumber(item.saldo)}</td>
+            `;
+
+            tr.innerHTML = rowHTML;
+            tbody.appendChild(tr);
+
+            // Agregar listeners de edición
+            tr.querySelectorAll('.editable').forEach(cell => {
+                cell.addEventListener('input', (e) => updateGasto(e.target));
+                // Al perder foco, se re-aplica el formato numérico
+                cell.addEventListener('blur', (e) => {
+                    e.target.textContent = formatNumber(parseNumber(e.target.textContent));
+                });
+                // Al ganar foco, se elimina el formato para facilitar la edición
+                cell.addEventListener('focus', (e) => {
+                    e.target.textContent = parseNumber(e.target.textContent) || '';
+                });
+            });
+        }
+
+        /**
+         * Actualiza el objeto de edición local (currentRecord) y recalcula el saldo.
+         */
+        function updateGasto(target) {
+            const field = target.getAttribute('data-field');
+            const newRawValue = target.textContent;
+            const newValue = parseNumber(newRawValue);
+
+            if (!isNaN(newValue) && newValue >= 0) {
+                currentRecord[field] = newValue;
+                currentRecord.saldo = calculateSaldo(currentRecord);
+
+                document.getElementById(`saldo-${currentRecord.dni}`).textContent = formatNumber(currentRecord.saldo);
+            } else {
+                // Revertir a un valor válido si la entrada no es un número
+                target.textContent = formatNumber(currentRecord[field]) || ''; 
+            }
+        }
+
+        /**
+         * Guarda la modificación de gasto en la base de datos local (IndexedDB).
+         */
+        function handleSave() {
+            if (!currentRecord) return;
+            
+            showModal(
+                'Confirmar Guardado Local',
+                `¿Está seguro de que desea guardar la modificación de gastos para el DNI: ${currentRecord.dni} en el almacenamiento local?`,
+                true, // Es una confirmación
+                performSave // Función a ejecutar si confirma
+            );
+        }
+        window.handleSave = handleSave;
+
+        async function performSave() {
+            if (!currentRecord) return;
+
+            // 1. Encontrar el índice del registro en el array principal
+            const index = farmaciaData.findIndex(item => item.dni === currentRecord.dni);
+
+            if (index !== -1) {
+                // 2. Actualizar el registro en el array de datos
+                farmaciaData[index] = currentRecord;
+                
+                // 3. Guardar el registro actualizado en IndexedDB
+                await putToDB(currentRecord);
+                
+                showModal('Guardado Exitoso', '¡Los gastos del socio han sido guardados y sincronizados en el Almacenamiento Local!');
+                
+                // Limpiar la vista de búsqueda
+                document.getElementById('search-results-container').classList.add('hidden');
+                document.getElementById('results-table-body').innerHTML = '';
+                document.getElementById('dni-input').value = '';
+                currentRecord = null; 
+
+            } else {
+                showModal('Error de Guardado', 'No se encontró el registro en la base de datos en memoria.');
+            }
+        }
+
+
+        // --- Vistas y Acciones de Reporte ---
+
+        /**
+         * Muestra la vista de listado de gastos del mes.
+         * @param {boolean} fromSave Indica si se llama desde una acción de guardado/cierre.
+         */
+        function renderMonthlyExpenses(fromSave = false) {
+            const mainView = document.getElementById('main-view');
+            const monthlyView = document.getElementById('monthly-expenses-view');
+            const footerActions = document.getElementById('footer-actions');
+            const tbody = document.getElementById('monthly-expenses-body');
+            
+            if (!fromSave) {
+                 if (!isDataLoaded) {
+                    showModal('Búsqueda Pendiente', 'Los datos aún se están cargando. Por favor, espere un momento.');
+                    return;
+                }
+                mainView.classList.add('hidden');
+                footerActions.classList.add('hidden');
+                monthlyView.classList.remove('hidden');
+            }
+
+            tbody.innerHTML = '';
+            
+            // Filtrar solo los registros con al menos un gasto
+            const expenseRecords = farmaciaData.filter(item => 
+                GASTO_FIELDS.some(field => (item[field] || 0) > 0)
+            );
+
+            if (expenseRecords.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="6" class="p-4 text-center text-gray-500">No hay registros con gastos anotados.</td>`;
+                tbody.appendChild(tr);
+                return;
+            }
+
+            let totalGastosAcumulado = 0;
+
+            expenseRecords.forEach(item => {
+                const totalGastos = GASTO_FIELDS.reduce((sum, field) => sum + (item[field] || 0), 0);
+                totalGastosAcumulado += totalGastos;
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-gray-100 hover:bg-gray-50 transition duration-150';
+                
+                let rowHTML = `
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-700 font-medium">${item.apellidoNombre}</td>
+                    <td class="p-4 whitespace-nowrap text-sm text-gray-700">${item.dni}</td>
+                `;
+                
+                // Gastos
+                GASTO_FIELDS.forEach(field => {
+                    rowHTML += `<td class="p-4 whitespace-nowrap text-sm text-gray-700 text-right">${formatNumber(item[field])}</td>`;
+                });
+
+                // Total de Gastos (SALDO)
+                rowHTML += `
+                    <td class="p-4 whitespace-nowrap text-base font-bold text-red-600 text-right">${formatNumber(totalGastos)}</td>
+                `;
+
+                tr.innerHTML = rowHTML;
+                tbody.appendChild(tr);
+            });
+
+            // Fila de total
+            const totalRow = document.createElement('tr');
+            totalRow.className = 'bg-gray-200 font-extrabold';
+            totalRow.innerHTML = `
+                <td colspan="5" class="p-4 text-right text-sm text-gray-800">TOTAL GASTOS DEL MES:</td>
+                <td class="p-4 whitespace-nowrap text-base text-red-700 text-right">${formatNumber(totalGastosAcumulado)}</td>
+            `;
+            tbody.appendChild(totalRow);
+        }
+        window.renderMonthlyExpenses = renderMonthlyExpenses;
+        
+        /**
+         * Vuelve a la vista principal de búsqueda.
+         */
+        function renderSearch() {
+            document.getElementById('main-view').classList.remove('hidden');
+            document.getElementById('monthly-expenses-view').classList.add('hidden');
+            document.getElementById('footer-actions').classList.remove('hidden');
+            document.getElementById('search-results-container').classList.add('hidden');
+            document.getElementById('dni-input').value = '';
+        }
+        window.renderSearch = renderSearch;
+
+        /**
+         * Maneja la confirmación para el cierre de mes.
+         */
+        function handleCloseMonthConfirmation() {
+            // Aseguramos la vista de los gastos antes de la confirmación
+            renderMonthlyExpenses(); 
+            
+            showModal(
+                'Confirmar Cierre de Mes (Local)',
+                '¡ATENCIÓN! Esta acción es irreversible en el Almacenamiento Local. Se IMPRIMIRÁ el listado de gastos y luego se BORRARÁN todos los montos de Gasto 1 a 3 en toda la base de datos. ¿Desea continuar?',
+                true, // Es una confirmación
+                handleCloseMonth // Función a ejecutar si confirma
+            );
+        }
+        window.handleCloseMonthConfirmation = handleCloseMonthConfirmation;
+
+        /**
+         * Cierra el mes: Imprime, limpia los campos de gasto y actualiza el IndexedDB.
+         */
+        async function handleCloseMonth() {
+            // 1. Trigger la impresión del listado actual
+            handlePrint();
+
+            let updateCount = 0;
+
+            // 2. Limpiar los campos de gasto y recalcular saldo en memoria
+            for (const item of farmaciaData) {
+                if (GASTO_FIELDS.some(field => (item[field] || 0) > 0)) {
+                    GASTO_FIELDS.forEach(field => {
+                        item[field] = 0;
+                    });
+                    item.saldo = calculateSaldo(item); // El saldo vuelve a ser 0
+                    await putToDB(item);
+                    updateCount++;
+                }
+            };
+
+            console.log(`Cierre de mes: ${updateCount} registros actualizados localmente.`);
+            showModal('Cierre Exitoso', '¡Mes cerrado! Los gastos han sido limpiados y guardados en el Almacenamiento Local.');
+            renderSearch(); // Volver a la vista principal
+        }
+
+        /**
+         * Dispara la función de impresión del navegador.
+         */
+        function handlePrint() {
+            window.print();
+        }
+        window.handlePrint = handlePrint;
+
+        /**
+         * Exporta la base de datos actual a un archivo CSV/Excel.
+         */
+        function handleExport() {
+            if (!isDataLoaded) {
+                 showModal('Advertencia', 'Los datos aún se están cargando. Intente de nuevo en un momento.');
+                 return;
+            }
+
+            // Preparar los datos con los nombres de columna finales
+            const dataToExport = farmaciaData.map(item => ({
+                'DNI': item.dni,
+                'Apellido y Nombre': item.apellidoNombre,
+                'Legajo': item.legajo || '',
+                'Mes': item.mes || '',
+                'Gasto 1': formatNumber(item.gasto1),
+                'Gasto 2': formatNumber(item.gasto2),
+                'Gasto 3': formatNumber(item.gasto3),
+                'SALDO': formatNumber(item.saldo)
+            }));
+
+            if (dataToExport.length === 0) {
+                showModal('Advertencia', 'No hay datos para exportar.');
+                return;
+            }
+
+            // Usar SheetJS para generar un archivo Excel (.xlsx) para mejor compatibilidad
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Gastos Farmacia");
+
+            // Escribir y descargar el archivo
+            XLSX.writeFile(wb, "Reporte_Farmacia_Yiyo.xlsx");
+
+            showModal('Exportación Exitosa', 'El archivo Excel (.xlsx) ha sido generado y descargado.');
+        }
+        window.handleExport = handleExport;
+
+
+        // Iniciar la aplicación al cargar la página
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadData(); // Cargar los datos al inicio
+            
+            // Permite buscar al presionar Enter en el campo DNI
+            document.getElementById('dni-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleSearch();
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>
